@@ -1,0 +1,100 @@
+---
+title: "Text Data Parsing"
+author: "Nisaar Hussain"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load Packages
+
+```{r}
+rm(list=ls())
+
+library(tidyverse)
+library(rvest)
+library(xml2)
+
+library(pdftools) # getting information from pdf documents 
+```
+
+# Parse a PDF document
+
+## Function to parse a PDF file
+
+```{r}
+pdf_parsed <- pdf_text("Lecture 10/2_Web_Scraping/data_1/20220530.pdf")
+pdf_parsed
+```
+
+
+```{r}
+## It returns a vector of 8 elements. Why 8?  
+## 8 pages! Each page is put in a separate element.
+length(pdf_parsed)
+```
+
+
+## Save the file into a .txt file (a text document)
+
+```{r}
+write(pdf_parsed, file = "Lecture 10/2_Web_Scraping/data_1/20220530_parsed.txt")
+```
+
+
+# Parse a webpage 
+
+## Load the HTML file
+
+```{r}
+doc_html <- read_html("Lecture 10/2_Web_Scraping/data_1/20220621.htm")
+typeof(doc_html)
+class(doc_html)
+
+```
+
+## Check again
+```{r}
+print(doc_html)
+```
+
+
+## Lazy parsing
+```{r}
+#Just get all the text
+html_parsed <- html_text(doc_html) # Blindly retrieve all the text form the webpage
+print(html_parsed)
+write(html_parsed, "Lecture 10/2_Web_Scraping/data_1/20220621_parsed_lazy.txt")
+```
+
+## Precise parsing 
+
+### Step 1: Use SelectGadget extension in Chrome to locate the content of interest
+
+### Step 2: Use R to locate the section
+```{r}
+
+text_all <- doc_html %>%
+  html_elements("#contentBody") %>%
+  html_text()
+
+text_title <- doc_html %>%
+  html_elements("#PRHeadlineSpan") %>%
+  html_text()
+
+text_body <- doc_html %>%
+  html_elements("#pressrelease") %>%
+  html_text()
+```
+
+### Step 3: Save the results
+
+```{r}
+write(text_all, "Lecture 10/2_Web_Scraping/data_1/20220621_parsed_all.txt")
+write(text_title, "Lecture 10/2_Web_Scraping/data_1/20220621_parsed_title.txt")
+write(text_body, "Lecture 10/2_Web_Scraping/data_1/20220621_parsed_body.txt")
+```
+
+### Alternatively: Web Scrapper Chrome Extension

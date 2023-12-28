@@ -1,0 +1,139 @@
+---
+title: "Note_Data_Wrangling_(2)"
+author: "Nisaar Hussain"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Opening Remarks:
+We mainly did data wrangling in a single data frame 
+Now, we are going to work with multiple data frames  
+
+
+## Objective
+
+1.  ... to *reshape* a table (long \<-\> wide) with `pivot_longer` and `pivot_wider`
+2.  ... to *stack* tables by row or by column with `bind_rows` and `bind_cols` (or, alternatively, `cbind` and `rbind`)
+3.  ... to *merge* two tables with `inner_join`, `full_join`, `left_join`, `right_join`, `semi_join`, and `anti_join`
+
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+d <- read_csv("_DataPublic_/vdem/1984_2022/vdem_1984_2022_external.csv")
+
+```
+
+### 1. Reshape the V-Dem dataset
+
+- Make this dataset from wide to long using the pivot_long functions
+- Transposes the columns into rows    
+
+```{r}
+# Want: Each row contain country-year-variable
+
+d |> select(country_name) |> distinct()
+
+# Use the start_with function to select columns that start with e
+d_subset <- d |> select(country_name, year, starts_with("e_"))
+
+# We have around 189 columns starting with e and they have their corresponding values 
+
+# We convert all these e columns into rows using pivot_longer functions
+d_subset_long <- 
+  d_subset |> pivot_longer(cols = starts_with("e_"))
+```
+
+- Make the years into columns
+- Use pivot_wider function
+
+```{r}
+d_subset_wide_year <-
+  d_subset_long |> pivot_wider(names_from = year, values_from = value)
+```
+
+### 2. Stack multiple subsets of the V-Dem datasets
+
+```{r}
+d_VdemIndex <- read_csv("_DataPublic_/vdem/1984_2022/vdem_1984_2022_index.csv")
+```
+
+- Bind the 2 datasets by rows
+
+```{r}
+d_stack <- bind_cols(d, d_VdemIndex)
+?bind_cols
+```
+
+```{r}
+# Want: Stack two tables by rows?
+d_1945_1983 <- read_csv("_DataPublic_/vdem/1945_1983/vdem_1945_1983_external.csv")
+
+```
+
+- Bind the 2 datasets by columns
+
+```{r}
+# Bind the 2 columns
+d_1945_2022 <- bind_rows(d, d_1945_1983)
+
+# Check if they are successfully stacked
+d_1945_2022 |> select(year) |> distinct() |> arrange(year)
+
+```
+
+### 3. Join multiple regional subsets of the V-Dem datasets
+
+```{r}
+# INSERT CODE
+```
+
+### 4. Validate the GDP data in V-Dem with World Bank data
+
+**Task:** There are many different "versions" of GDP data. I wonder whether the GDP data in the V-Dem dataset is reliable. So I would like to validate it with [data from the World Bank](https://data.worldbank.org/).
+
+#### Download World Bank Data
+
+We will start the adventure by downloading World Bank data.
+
+```{r}
+# Install the WDI package that helps fetch data from the World Bank dataset
+# See: https://github.com/vincentarelbundock/WDI
+
+# install.packages("WDI")
+
+# Note: Comment out the above "install.packages" command after you are done with installing the package.
+```
+
+```{r}
+library(WDI)
+```
+
+```{r}
+# Search for GDP related data
+wb_gdpdata_list <- WDIsearch("gdp")
+
+str(wb_gdpdata_list)
+
+# Narrow down to indicators of GDP (I have done some pre-screening)
+wb_gdpdata_list_s <- wb_gdpdata_list |> filter(str_detect(indicator, "^NY\\.GDP"))
+```
+
+```{r}
+# Download GDP-related data
+wb_gdpdata <- WDI(
+  indicator = c("NY.GDP.MKTP.PP.KD", "NY.GDP.PCAP.PP.KD"), 
+  country = "all", 
+  start = 1984, end = 2022)
+```
+
+```{r}
+# Remove the intermediate data we no longer need.
+rm(wb_gdpdata_list, wb_gdpdata_list_s)
+```
+

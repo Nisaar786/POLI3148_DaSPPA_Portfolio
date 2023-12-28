@@ -1,0 +1,35 @@
+---
+output: 
+  html_document: 
+    theme: journal
+---
+# Heading 1
+## Heading 2
+### Heading 3
+#### Heading 4
+##### Heading 5
+###### Heading 6
+
+### *italic*
+### **bold**
+### ***Bold Italic***
+
+1. list item 1
+2. list item 2
+
+- Bullet point 1
+* Bullet 1
+
+Links:
+
+[here is a link to my website](https://www.rforecology.com)
+
+```{r}
+answer <- 2 + 4
+answer
+my_data <- cars
+my_data
+
+```
+
+

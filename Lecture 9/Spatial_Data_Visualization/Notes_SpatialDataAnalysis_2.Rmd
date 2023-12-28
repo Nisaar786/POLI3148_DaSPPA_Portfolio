@@ -1,0 +1,220 @@
+---
+title: "Spatial Data Analysis 2"
+author: "Nisaar Hussain"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+-   We want to visualize the distribution of a variable geographically
+
+## Required Package
+
+```{r}
+library(tidyverse)
+library(ggthemes)
+theme_set(theme_map())
+```
+
+## Load the Conflict Data
+
+```{r}
+d = read_csv("Lecture 9/data/GEDEvent_v22_1.csv")
+names(d)
+```
+
+## Map Inter-Country Variation
+
+Draw a world map featuring the variation of conflicts among countries in the year of 2021.
+
+### Put together your data
+
+Create a dataframe named `d_country_2021` that summarizes the number of conflicts in each country in the year of 2021.
+
+```{r}
+d_country_2021 = d |>
+  filter(year == 2021) |>
+  group_by(country, country_id, region) |>
+  summarise(
+    n_conflict = n()
+  )
+
+d_country_2021 = d_country_2021 |> arrange(-n_conflict)
+
+```
+
+## Load the World Map
+
+```{r}
+world = map_data("world")
+
+names(world)
+
+# Summary statistics
+summary(world)
+
+# Problem: Max. longitude > 180! Remove those
+world = world |> filter(long <= 180)
+```
+
+```{r}
+# Plot the world map
+world |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region),
+    color = "white", fill = "gray", size = 0.1
+  ) +
+  coord_map()
+
+```
+
+## Merge Data with the World Map
+
+```{r}
+# merge the conflict dataset with the world dataset
+world_m = world |>
+  left_join(d_country_2021, by = c("region" = "country"))
+
+```
+
+Check what the merged data look like.
+
+## Now, Visualize Conflict Data on a Map
+
+Color the countries with the number of conflicts in 2021.
+
+```{r}
+world_m |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region, fill = n_conflict),
+    color = "black", size = 0.1
+  ) +
+  coord_map()
+```
+
+## Make the Map More Informative
+
+Make the above map more informative
+
+### Change the color scheme
+
+`scale_fill_viridis_c()` function. 
+
+This should give the most reliable color scheme.
+
+```{r}
+world_m |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region, fill = n_conflict),
+    color = "white", size = 0.1
+  ) +
+  scale_fill_viridis_c(option = "A") +
+  coord_map()
+
+world_m |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region, fill = n_conflict),
+    color = "white", size = 0.1
+  ) +
+  scale_fill_viridis_c(option = "B") +
+  coord_map()
+
+world_m |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region, fill = n_conflict),
+    color = "white", size = 0.1
+  ) +
+  scale_fill_viridis_c(option = "B", direction = -1) +
+  coord_map()
+
+world_m |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region, fill = n_conflict),
+    color = "white", size = 0.1
+  ) +
+  scale_fill_viridis_c(option = "D", direction = -1) +
+  coord_map()
+```
+
+Try the other specifications of color schemes.
+
+### Change the legend's name
+
+The most robust way to change the legend's name is the rename the variable.
+
+Note: When your variable name contains space, put "\`" around it.
+
+```{r}
+# Change n_conflicts to Number of conflicts in the legend
+# simply rename the variable  
+world_m |>
+  rename("Number of Conflicts" = "n_conflict") |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region, fill = `Number of Conflicts`),
+    color = "white", size = 0.1
+  ) +
+  scale_fill_viridis_c(option = "B", direction = -1) +
+  coord_map()
+```
+
+### Transforming the Scale or Data
+
+The distribution of the conflict frequencies is so skewed that makes the differences of low-conflict countries indistinguishable. 
+
+Transform the data or the scales to take into account the skewed data.
+
+```{r}
+# use trans = log to better tackle the skewed distribution for color contrast
+world_m |>
+  rename("Number of Conflicts" = "n_conflict") |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region, fill = `Number of Conflicts`),
+    color = "white", size = 0.1
+  ) +
+  scale_fill_viridis_c(option = "B", direction = -1, trans = "log") +
+  coord_map()
+```
+
+Or we can transform the data
+
+```{r}
+# Transform the conflict data
+# Not recommended, makes the result less interpretable 
+world_m |>
+  rename("Number of Conflicts" = "n_conflict") |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region, fill = log(`Number of Conflicts`+1)),
+    color = "white", size = 0.1
+  ) +
+  scale_fill_viridis_c(option = "B", direction = -1) +
+  coord_map() +
+  theme(legend.position = "bottom")
+```
+
+## Choropleth Maps
+
+The maps we have drawn are named "choropleth maps."
+
+"A choropleth map displays divided geographical areas or regions that are colored in relation to a numeric variable."

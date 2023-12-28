@@ -1,0 +1,185 @@
+---
+title: "Topic Modelling"
+author: "Nisaar Hussain"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+-  Topic Modeling
+
+-  Quickly Summarize the Topics of various Documents
+
+-  Extract word topic relationship and topic document relationship
+
+-  It identifies words in each document, matches them and categorizes them into different topics
+
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+
+```{r}
+d_fulltext = read_rds("Lecture 10/1_Text_Mining/data/data_ce_speech_article.rds")
+# Change the date variable to "date" format
+d_fulltext = d_fulltext |> mutate(date_of_speech = dmy(date_of_speech))
+```
+
+## Tokenization
+
+```{r}
+library(tidytext) 
+```
+
+```{r}
+d_tokenized = d_fulltext |>
+  select(uid, date_of_speech, text) |>
+  unnest_tokens(word, text)
+
+head(d_tokenized, 20)
+
+```
+
+## Wrangling: Remove Stop Words
+
+```{r}
+# Load Stopwords
+data("stop_words")
+
+head(stop_words, 20)
+```
+
+```{r}
+# Remove stopwords
+d_tokenized_s = d_tokenized |>
+  anti_join(stop_words, by = "word")
+# anti_join: whatever appearing in the stop_words dataframe, we remove it.
+```
+
+## Wrangling [Optional]: Stemming
+
+```{r}
+if (!require(SnowballC)) install.packages("SnowballC")
+library(SnowballC)
+```
+
+```{r}
+d_tokenized_s = d_tokenized_s |>
+  mutate(stem = wordStem(word))
+
+head(d_tokenized_s, 20)
+```
+
+## Calculate Document-level Term Frequencies
+
+```{r}
+# Want: How many words are there in each document
+# Calculate words document by document
+d_word_frequencies = d_tokenized_s |>
+  group_by(uid, stem) |>
+  count()
+
+head(d_word_frequencies)
+```
+
+## Create Document-Term Matrix
+
+```{r}
+dtm = d_word_frequencies |> cast_dtm(uid, stem, n)
+
+# What does a document-term matrix look like?
+# All speeches are documents
+# All columns are terms which contains unique words in the documents
+```
+
+## Fit Topic Models
+
+```{r}
+if (!require(topicmodels)) install.packages("topicmodels")
+library(topicmodels)
+
+# Set number of topics in each document (set an arbitrary number)
+K = 20
+
+# Set random number generator seed
+set.seed(1122)
+
+# compute the LDA model, inference via 1000 iterations of Gibbs sampling
+m_tm = LDA(dtm, K, method="Gibbs", 
+            control=list(iter = 500, verbose = 25))
+```
+
+## Clean Results of Topic Models
+
+```{r}
+# install.packages("reshape2")
+## beta: How words map to topics
+## Which words belong to which topic
+sum_tm_beta = tidy(m_tm, matrix = "beta")
+
+## gamma: How documents map on topics
+sum_tm_gamma = tidy(m_tm, matrix = "gamma") |>
+  rename("uid" = "document") 
+
+sum_tm_gamma_wide = sum_tm_gamma |>
+  pivot_wider(names_from = "topic", values_from = "gamma", names_prefix = "topic_")
+```
+
+## Visualize Topic Modeling Results
+
+```{r}
+# Prevalence of each topic
+# It gives the proportion of the topic's relevance to the document 
+sum_tm_gamma |>
+  group_by(topic) |>
+  summarise(sum_gamma = sum(gamma)) |>
+  arrange(desc(sum_gamma))
+```
+
+```{r}
+TOP_N_WORD = 10
+
+topic_top_word = sum_tm_beta |>
+  rename("word" = "term") |>
+  group_by(topic) |>
+  slice_max(beta, n = TOP_N_WORD) |>
+  arrange(topic, desc(beta))
+```
+
+```{r, fig.width=10, fig.height=10}
+### Visualization 1: Topics in bar charts
+
+topic_top_word |>
+  mutate(word = reorder_within(word, beta, topic)) |>
+  ggplot(aes(y = word, x = beta)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~topic, scales = "free_y") +
+  scale_y_reordered() + # Use with reorder_within
+  labs(
+    title = "Topic Modeling",
+    subtitle = "Top words associated with each topic"
+  )
+
+# Some of the topics will not make sense
+# Multiple topics maybe the same topics 
+# algorithm just cluster words by topics 
+```
+
+```{r, fig.width=12, fig.height=12}
+### Visualization 2: Topics in word cloud
+library(ggwordcloud)
+
+topic_top_word |>
+  ggplot(aes(label = word, size = beta)) +
+  geom_text_wordcloud() +
+  scale_size_area(max_size = 4) + # Tune this number to change the scale
+  facet_wrap(~factor(topic)) +
+  labs(
+   title = "Topic Modeling: Top words associated with each topic"
+  ) +
+  theme_minimal()
+```

@@ -1,0 +1,68 @@
+---
+title: "Lecture 6 Troubleshooting Notes"
+author: "Nisaar"
+output: html_document
+---
+
+# Troubleshooting
+
+## Object Note Found
+- Check whether the data is properly loaded
+
+## Could not find function error
+- Either not loaded the library package 
+- Spelling of the function wrong (Check the upper case, lower case etc)
+
+## First things to ask before coding
+- Have you loaded the required dataset you need ?
+- Have you loaded the required package that you need to perform analysis ?
+
+## R console and Render are different system 
+- Console runs the code (when you press ctrl + enter)
+- Render will knit the pdf, it will run the code differently
+- Don't worry if you code does not run in another type of document cuz they run the code differently
+
+## Other Messages
+- When you load a package you get different messages popping up on the console, just preface given by the creator
+
+## R project
+- Organize your files for you, it sets the working directory of your folder, default path for all the files
+```{r}
+getwd()
+```
+
+- Enjoy the convenience of using the relative path, where ever you move your folder, everything sticks in, increases reproducibility
+
+- Take a look at organizing files in the textbook (root folder, relative path, absolute path)
+
+## Locating the problem
+### Clear the environment
+
+- If you close R studio, save the code but don't save the workplace image; workplace image is trash
+- Clean environement will help you to do better
+
+### Run your program
+- After you clear environment
+- Run All Chunk above button
+- It will show you where the problem occurs
+
+## Seek Assitance (Search)
+
+- R” + package name (e.g., tidyverse) + function’s name
+- Include the error message (e.g. object not found)
+- Remove the part that is specific to your case (file name, object name)
+
+Example: Error in eval(expr, envir, enclos): object ‘d’ not found
+Example: Error in read_csv(“vdem_1984_2022_external.csv”): could not find function
+
+## Seek Assitance (Human)
+- Try to make the problem replicable
+- Instead of giving the entire dataset, give a toy dataset
+- See if problem still appears suing the toy data set 
+
+
+
+
+
+
+

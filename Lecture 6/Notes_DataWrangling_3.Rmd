@@ -1,0 +1,540 @@
+---
+title: "Data Wrangling (3)"
+author: "Nisaar Hussain"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup
+
+## Outline
+
+-   Reshape (long \<-\> wide) with `pivot_longer` and `pivot_wider`
+
+-   Stack tables by row or by column with `bind_rows` and `bind_cols`
+
+-   Merge two tables with `inner_join`, `full_join`, `left_join`, `right_join`, `semi_join`, and `anti_join`
+
+-   Saving outputs
+
+## Example: The V-Dem Data
+
+\scriptsize
+
+```{r, message=FALSE}
+library(tidyverse)
+d <- read_csv("_DataPublic_/vdem/1984_2022/vdem_1984_2022_external.csv")
+d |> print(n = 3)
+```
+
+## Example: The V-Dem Data
+
+-   Focus on the economic indicators: GDP and GDP per capita.
+
+```{r}
+d_gdp <- d |> 
+  select(country_text_id, year, e_gdp, e_gdppc) |>
+  rename("gdp" = "e_gdp", "gdppc" = "e_gdppc")
+
+d_gdp |> print(n = 3)
+```
+
+# Reshape a Table
+
+## Wide to Long: `pivot_longer`
+
+-   Convert the columns into rows
+-   We want 2 rows for each year, gdp and gdppc
+
+```{r}
+d_gdp_long <- d_gdp |>
+  pivot_longer(cols = c("gdp", "gdppc"), 
+               names_to = "variable", values_to = "value")
+
+d_gdp_long |> print(n = 4)
+
+```
+
+## Long to Wide: `pivot_wider`
+
+Task: Reverse the above `pivot_long` operation.
+
+```{r}
+d_gdp_wide_1 <- d_gdp_long |>
+  pivot_wider(names_from = "variable", values_from = "value")
+
+d_gdp_wide_1 |> print(n = 4)
+```
+
+## Long to Wide: `pivot_wider`
+
+Task: Make `year` the column variable.
+
+- We want to convert the all the years into columns
+
+\scriptsize
+
+```{r}
+# Since the dataset needs to get wider, we use pivot_wider function
+d_gdp_wide_2 <- d_gdp_long |>
+  pivot_wider(names_from = "year", values_from = "value")
+
+d_gdp_wide_2 |> print(n = 2)
+```
+
+## Long to Wide: `pivot_wider`
+
+Task: Make `country_text_id` the column variable.
+-   Make all the countries as the columns, use pivot_wider
+
+\scriptsize
+
+```{r}
+d_gdp_wide_3 <- d_gdp_long |>
+  pivot_wider(names_from = "country_text_id", values_from = "value")
+
+d_gdp_wide_3 |> print(n = 2)
+```
+
+## Why Do We Reshape Data?
+
+-   **For data cleaning:** Sometime it is much easier to clean the data after reshaping
+
+-   **For data visualization:** Some data visualization functions only take tables shaped in a specific way
+
+-   **For data sharing:** Sometimes you want to export the data for human readers (e.g., data coding/ labeling)
+
+
+# Stack Tables
+
+## Task
+
+-   We want to merge the data `d_gdp` with some additional datasets that can safely stack together.
+
+
+##  Load New Data (1)
+
+Make a table with GDP data from two previous time periods (1945-1983 and 1906-1944).
+
+\scriptsize
+
+```{r, message=FALSE}
+d_gdp_1945 <- 
+  read_csv("_DataPublic_/vdem/1945_1983/vdem_1945_1983_external.csv") |>
+  select(country_text_id, year, e_gdp, e_gdppc) |>
+  rename("gdp" = "e_gdp", "gdppc" = "e_gdppc")
+
+d_gdp_1906 <- 
+  read_csv("_DataPublic_/vdem/1906_1944/vdem_1906_1944_external.csv") |>
+  select(country_text_id, year, e_gdp, e_gdppc) |>
+  rename("gdp" = "e_gdp", "gdppc" = "e_gdppc")
+
+d_gdp_1945 |> print(n = 2) 
+```
+
+## Load New Data (2)
+
+Make two subsets of `d` --- one with education indicators, another with Freedom House indicators.
+
+\scriptsize
+
+```{r}
+d_edu <- d |>
+  select(e_peaveduc, e_peedgini) |>
+  rename("edu_15" = "e_peaveduc", "edu_gini" = "e_peedgini")
+
+d_fh <- d |>
+  select(starts_with("e_fh")) |>
+  rename("fh_CivilLiberty" = "e_fh_cl", "fh_PoliticalRight" = "e_fh_pr",
+         "fh_RuleOfLaw" = "e_fh_rol", "fh_Status" = "e_fh_status")
+
+d_fh |> print(n = 2)
+```
+
+## `bind_rows`
+
+-   Stack 2 datasets vertically
+-   It will look for columns with same names
+-   Only stacks the rows of columns that are included in both datasets 
+
+\scriptsize
+
+```{r}
+d_gdp_1945_2022 <- bind_rows(d_gdp, d_gdp_1945)
+d_gdp_1945_2022 |> print(n = 3)
+unique(d_gdp_1945_2022$year) |> sort()
+
+d_gdp_1945_2022_ue_rows <- bind_rows(
+ d_gdp |> select(-gdppc),
+ d_gdp_1945 |> select(-gdp)
+)
+```
+
+## `bind_rows`
+
+\scriptsize
+
+```{r}
+d_gdp_1906_2022 <- bind_rows(d_gdp, d_gdp_1945, d_gdp_1906) # can take multiple data frames
+d_gdp_1906_2022 |> print(n = 3)
+unique(d_gdp_1906_2022$year) |> sort()
+```
+
+## `bind_cols`
+
+-   Add more columns to the dataset
+-   Add education and freedom house indicators columns to the d_gdp dataset
+-   Same syntax as bind_rows
+-   Both datasets should have same number of rows or you will get an error message
+
+\scriptsize
+
+```{r}
+d_gdp_edu_fh <- bind_cols(d_gdp, d_edu, d_fh) # can take multiple data frames
+d_gdp_edu_fh |> print(n = 3)
+names(d_gdp_edu_fh)
+```
+
+## !! WARNING !! for bind_rows and bind_cols
+
+### These are error-prone operations
+
+-   Do `bind_rows` and `bind_cols` ONLY WHEN you know for sure that there will not be a mismatch!
+
+-   If you have any slightest doubt, don't use them.
+
+# Join Tables
+
+-   X_join 
+
+-   X indicates whose observations we are going to keep
+
+## Tasks
+
+Understand the behavior of different `join_` functions
+
+-   `left_join`: Merge and only keep observations whose identifiers (matching keys) appear in the left-hand-side table.
+
+-   `right_join`: Merge and only keep observations whose identifiers (matching keys) appear in the right-hand-side table.
+
+-   `inner_join`: Merge and only keep observations whose identifiers (matching keys) appear in both tables.
+
+-   `full_join`: Merge and keep observations whose identifiers (matching keys) appear either table.
+
+-   `anti_join`: Filter out observations whose identifiers (matching keys) appear in the right-hand-side table
+
+-   `semi_join`: Filter out observations whose identifiers (matching keys) do not appear in the right-hand-side table
+
+## Task 1: The Case
+
+Join two datasets from the V-Dem data using the above different `join_` functions
+
+-   *GDP* data from **2000-2022**
+
+-   *GDP per capita* data from **1984 to 2010**
+
+## Task 1: Setup
+
+\scriptsize
+
+```{r}
+d_gdp_2000_2022 <- d |> filter(year %in% 2000:2022) |>
+  select(country_text_id, year, e_gdp) |> rename("gdp" = "e_gdp")
+
+d_gdppc_1984_2010 <- d |> filter(year %in% 1984:2010) |>
+  select(country_text_id, year, e_gdppc) |> rename("gdppc" = "e_gdppc")
+
+d_gdp_2000_2022 |> print(n = 2)
+d_gdppc_1984_2010 |> print(n = 2)
+```
+
+## `left_join`
+
+
+\scriptsize
+
+```{r}
+# We keep the data from 2000-2022 and merge it with 2000 - 2010
+# The data from 1984 - 1999 is ignored
+d_lj <- d_gdp_2000_2022 |> 
+  left_join(d_gdppc_1984_2010, by = c("country_text_id", "year"))
+
+# We get the unique years and sort them
+d_lj |> print(n = 2)
+unique(d_lj$year) |> sort()
+```
+
+## `right_join`
+
+\scriptsize
+
+```{r}
+# Keep the data from 1984-2010 and merge it with 2000-2010
+# The data from 2011-2022 is ignored since it is right join
+d_rj <- d_gdp_2000_2022 |> 
+  right_join(d_gdppc_1984_2010, by = c("country_text_id", "year"))
+
+d_rj |> print(n = 2)
+unique(d_rj$year) |> sort()
+```
+
+## `inner_join`
+
+-   only keep records that appear on both datasets (OVERLAP)
+-   Uses "AND"
+
+\scriptsize
+
+```{r}
+# Only 2000 - 2010 will appear in the output
+d_ij <- d_gdp_2000_2022 |> 
+  inner_join(d_gdppc_1984_2010, by = c("country_text_id", "year"))
+
+d_ij |> print(n = 2)
+unique(d_ij$year) |> sort()
+```
+
+## `full_join`
+
+-   As long as the identifiers appear in 1 dataset, it will be included
+-   Uses "OR"
+
+\scriptsize
+
+```{r}
+d_fj <- d_gdp_2000_2022 |> 
+  full_join(d_gdppc_1984_2010, by = c("country_text_id", "year"))
+
+d_fj |> print(n = 2)
+unique(d_fj$year) |> sort()
+```
+
+## `semi_join`
+
+-   Check if the identifier appears in the right table
+-   If it does, it keeps the records
+
+\scriptsize
+
+```{r}
+# Only the data from 2000-2010 will remain
+# It find out which columns on the left table are included in the right table
+d_sj <- d_gdp_2000_2022 |> 
+  semi_join(d_gdppc_1984_2010, by = c("country_text_id", "year"))
+
+d_sj |> print(n = 2)
+unique(d_sj$year) |> sort()
+```
+
+## `anti_join`
+
+-   If the identifiers appear on right table, then it removes them
+
+\scriptsize
+
+```{r}
+# Only show data from 2011 - 2022
+# Data from 1984 - 2010 is removed because it is on the RHS
+# Data from 2011 - 2022 is left because it does not appear on the RHS
+d_aj <- d_gdp_2000_2022 |> 
+  anti_join(d_gdppc_1984_2010, by = c("country_text_id", "year"))
+
+d_aj |> print(n = 2)
+unique(d_aj$year) |> sort()
+```
+
+## Join by Identifiers with Different Variable Names
+
+-   We previously have same column names, but what if the column names are different ?
+
+-   If the identifiers have different names, you have two options: 
+    (1) Rename it beforehand 
+    (2) specify the `by =` argument differently.
+
+\scriptsize
+
+```{r}
+# I make an artificial example whose variable name of a matching 
+# identifier is different from d_gdp_2020_2022.
+d_gdppc_1984_2010_t <- d_gdppc_1984_2010 |> 
+  rename("country_id" = "country_text_id")
+```
+
+```{r}
+# Option 1: Rename the variables beforehand
+d_aj_t <- d_gdp_2000_2022 |> 
+  rename("country_id" = "country_text_id") |>
+  anti_join(d_gdppc_1984_2010_t, by = c("country_id", "year"))
+
+# Option 2: Specify the "by =" argument with a *named vector*
+d_aj_t_2 <- d_gdp_2000_2022 |> 
+  anti_join(d_gdppc_1984_2010_t, 
+            by = c("country_text_id" = "country_id", 
+                   "year" = "year"))
+
+```
+
+## Many-to-One Join: Repeat!
+
+Calculate each country's average 1984-2010 *GDP per capita* and merge it with our annual GDP data from 2000 to 2022.
+
+\scriptsize
+
+```{r}
+d_gdppc_1984_2010_avg <- d_gdppc_1984_2010 |> group_by(country_text_id) |>
+  summarise(gdppc_1984to2010 = mean(gdppc, na.rm = TRUE))
+d_gdppc_1984_2010_avg |> print(n = 2)
+```
+
+```{r}
+d_lj_ManyToOne <- d_gdp_2000_2022 |> 
+  left_join(d_gdppc_1984_2010_avg, by = "country_text_id")
+d_lj_ManyToOne |> print(n = 2)
+```
+
+## Good Habit
+
+Joining tables is also error-prone.
+
+-   You want to have a clear mind about which variables from which datasets are kept in your final merged data.
+
+-   Failing to do so can cause difficulty with replication.
+
+-   Add suffixes or prefixes indicating data sources 
+    (so that you identify the data source directly from the variable)
+    (e.g use wb from variable coming from World Bank dataset)
+
+-   Add binary indicators (1/0) indicating from in which dataset is each observation available
+
+## Good Habit: Add Availability Indicators
+
+-   Add binary indicators about data availability in each sources.
+
+\scriptsize
+
+```{r}
+# The d_gdp_2000_2022 data are from V-Dem
+d_gdp_2000_2022_t <- d_gdp_2000_2022 |> mutate(source_vdem = 1)
+
+# *Pretend* that the d_gdppc_1984_2010 data are from the World Bank
+d_gdppc_1984_2010_t <- d_gdppc_1984_2010 |> mutate(source_wb = 1)
+
+d_fj_habit <- d_gdp_2000_2022_t |> 
+  full_join(d_gdppc_1984_2010_t, by = c("country_text_id", "year"))
+
+d_fj_habit |> print(n = 3)
+```
+
+## Good Habit: Add Availability Indicators
+
+What can you do with these binary indicators? We can know the overlaps of multiple sources.
+
+\scriptsize
+
+```{r}
+d_fj_habit |>
+  group_by(source_vdem, source_wb) |>
+  count()
+```
+
+\normalsize
+
+If the overlap looks weird to you, you will know that you need to re-examine the data merging process.
+
+## Good Habit: Add Availability Indicators
+
+Question: Why not just check `NA` in each variables?
+
+Answer: An observation can be missing for two reasons
+
+-   It is in the one of the tables but it does not contain a value.
+
+-   It is not in any of the tables at all.
+
+`join_` make it hard to distinguish between the two scenarios.
+
+## Good Habit: Add prefix or suffix to variable names
+
+-   Previously: Give informative names to variable
+
+-   New advice: Add the source of the variables as part of their names if your final dataset is a combination of many different datasets
+
+## Good Habit: Add prefix or suffix to variable names
+
+\scriptsize
+
+```{r}
+d_gdp_2000_2022_rn <- d_gdp_2000_2022 |> 
+  rename("vdem_gdp" = "gdp")
+  # rename_at(vars(-c("country_text_id", "year")), ~str_c("vdem_", .))
+
+d_gdppc_1984_2010_rn <- d_gdppc_1984_2010 |> 
+  rename("wb_gdppc" = "gdppc")
+  # rename_at(vars(-c("country_text_id", "year")), ~str_c("wb_", .))
+
+d_fj_habit_2 <- d_gdp_2000_2022_rn |>
+  full_join(d_gdppc_1984_2010_rn, by = c("country_text_id", "year"))
+
+d_fj_habit_2 |> print(n = 3)
+```
+
+# Save Outputs
+
+## File Formats
+
+You can save your clean data in a variety of formats.
+
+-   `.csv` "comma-separated values," readable by Excel or a text editor
+
+-   `.rds` "R data serialization," readable by R only
+
+-     replace read_csv with write_csv
+
+\scriptsize
+
+```{r}
+# Save to a .csv file
+write_csv(d_gdp_1945_2022, "Lec_06/2_data_wrangling_3/data/gdp_1945_2002.csv")
+
+# Save to a .rds file
+saveRDS(d_gdp_1945_2022, "Lec_06/2_data_wrangling_3/data/gdp_1945_2002.rds")
+```
+
+## Reloading saved files
+
+You can re-load saved `.csv` and `.rds` files using `read_csv` and `readRDS` respectively
+
+\footnotesize
+
+```{r}
+# Read a .csv file
+d_read_1 <- read_csv("Lec_06/2_data_wrangling_3/data/gdp_1945_2002.csv")
+
+# Read a .rds file
+d_read_2 <- readRDS("Lec_06/2_data_wrangling_3/data/gdp_1945_2002.rds")
+```
+
+## When to use csv/rds file format
+
+-   When to save as `.csv`
+
+    -   Simple data types
+
+    -   Want to manually examine it outside R (e.g., Excel)
+
+    -   Want to share it with non-R users
+
+-   When to save as `.rds`
+
+    -   Complex combination of data types
+
+    -   Simply saving for your future use in R
+
+    -   Large dataset and you want to save space
+
+    -   Text data
+
+If you don't care about looking at the data outside R, `.rds` is a safer option.

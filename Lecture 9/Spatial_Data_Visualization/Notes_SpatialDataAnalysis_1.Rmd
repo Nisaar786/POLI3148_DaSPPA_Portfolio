@@ -1,0 +1,289 @@
+---
+title: "Spatial Data Analysis 1"
+author: "Nisaar Hussain"
+date: "2023-12-27"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Required Package
+
+```{r}
+library(tidyverse)
+library(ggthemes)
+theme_set(theme_map())
+```
+
+## Case: The Spatial Patterns of Conflict Data
+
+Spatial data analysis on conflicts.
+
+-   [UCDP] Upsala Conflict Data Program: <https://ucdp.uu.se/>
+
+-   [ACLED] Armed Conflict Location & Event Data: <https://acleddata.com/>
+
+## Objective
+
+Explore the simplest way to plot a global map visualizing the country-level frequencies of conflict severity.
+
+## Download UCDP Data
+
+```{r, eval=TRUE}
+# Location: https://ucdp.uu.se/downloads/
+
+download.file(
+  "https://ucdp.uu.se/downloads/ged/ged221-csv.zip",
+  destfile = "Lecture 9/data/ged221-csv.zip")
+
+# Decompress the downloaded ZIP file
+unzip("Lecture 9/data/ged221-csv.zip", exdir = "Lecture 9/data")
+
+# Codebook available on the website
+```
+
+## Load the Conflict Data
+
+```{r}
+d = read_csv("Lecture 9/data/GEDEvent_v22_1.csv")
+names(d)
+```
+
+## Plot Events on a Map
+
+Plot individual conflict events on a map
+
+Create a dataframe named `d_event_2021` that contains all events in the year of 2021
+
+```{r}
+d_event_2021 = d |> filter(year == 2021)
+```
+
+## Load the World Map
+
+```{r}
+world = map_data("world")
+# All the long and lat points are representing the boundaries of the region 
+
+names(world)
+
+# Summary statistics
+summary(world)
+
+# Problem: Max. longitude > 180! Remove those
+world = world |> filter(long <= 180)
+```
+
+```{r}
+#Want: filter all the data points for China
+world_china = world |> 
+  filter(region == "China")
+
+# Use the ggplot to a create map of China based on the data points extracted above
+world_china |>
+  ggplot() +
+  geom_point(aes(x = long, y = lat))
+
+```
+
+Plot the world map
+
+```{r, fig.width=15, fig.height=12}
+# Use geom_map function
+world |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world, # dataset to be used for creating the map
+    aes(map_id = region), # using identifier region to carve the boundaries
+    color = "white", fill = "gray", linewidth = 0.1
+  )
+
+```
+
+**Add map projection**: 
+
+The earth is not a flat plane. 
+
+When we draw maps, we "project" the non-flat plane to a 2D flat plane. 
+
+There are multiple ways through which we can do this projection. For example:
+
+```{r, fig.width=15, fig.height=12}
+# use coord_map to create projections of the world map
+world |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region),
+    color = "white", fill = "gray", linewidth = 0.1
+  ) +
+  coord_map() 
+```
+
+There are a variety of projections available. 
+
+Choose what you like (for pragmatic and aethetic purpose)
+
+```{r, fig.width=15, fig.height=12}
+world |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region),
+    color = "white", fill = "gray", linewidth = 0.1
+  ) +
+  coord_map("moll")
+
+world |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region),
+    color = "white", fill = "gray", linewidth = 0.1
+  ) +
+  coord_map("gilbert")
+
+world |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region),
+    color = "white", fill = "gray", linewidth = 0.1
+  ) +
+  coord_map("orth")
+
+
+```
+
+## Plot Conflict Events as Points on the map
+
+Plot the events as points on the map.
+
+```{r}
+# Visualize civil conflicts in 2021
+# Plot only the conflict points, exclude the world map yet
+ggplot() +
+  geom_point(data = d_event_2021, aes(x = longitude, y = latitude))
+```
+
+### Stack the points onto the map
+
+```{r, fig.width=15, fig.height=12}
+# First plot the world map as background only
+world |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region),
+    color = "white", fill = "gray", linewidth = 0.1
+  ) +
+  # Below: Stack conflict points onto the map
+  geom_point(data = d_event_2021, aes(x = longitude, y = latitude)) +
+  coord_map("gilbert")
+
+```
+
+### Make the Plot Prettier
+
+```{r, fig.width=15, fig.height=12}
+world |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region),
+    color = "white", fill = "gray", linewidth = 0.1
+  ) +
+  geom_point(
+    data = d_event_2021, 
+    aes(x = longitude, y = latitude),
+    alpha = 0.3
+    ) +
+  coord_map()
+
+```
+
+## Plot Conflict Mortality
+
+Use number of deaths as size of points. Calculate total number of deaths
+
+```{r}
+# create an indicator specifying the total no. of deaths
+d_event_2021 = d_event_2021 |>
+  mutate(Deaths = deaths_a + deaths_b + 
+           deaths_civilians + deaths_unknown)
+
+summary(d_event_2021$Deaths)
+
+d_event_2021 |>
+  ggplot() +
+  geom_density(aes(x = Deaths)) +
+  theme_bw() +
+  scale_x_sqrt() # tackle the skewed distribution as no. of deaths are mainly low
+
+```
+
+```{r, fig.width=15, fig.height=12}
+# Want: The size of the points to represent the no. of deaths
+# Specify size = Deaths in geom_point
+world |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region),
+    color = "white", fill = "gray", size = 0.1
+  ) +
+  geom_point(
+    data = d_event_2021, 
+    aes(x = longitude, y = latitude, size = Deaths),
+    alpha = 0.3
+    ) +
+  coord_map() +
+  theme(legend.position = "bottom")
+```
+
+
+```{r, fig.width=12, fig.height=8}
+# Situation: distribution so skewed that we are not seeing meaningful variations
+# Want:Take logarithm of the `Death` variable
+
+world |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region),
+    color = "white", fill = "gray", linewidth = 0.1
+  ) +
+  geom_point(
+    data = d_event_2021, 
+    aes(x = longitude, y = latitude, size = log(Deaths+1)),
+    alpha = 0.1
+    ) +
+  coord_map() +
+  theme(legend.position = "bottom")
+
+# Q: Why log(Deaths**+1**) ?
+```
+
+
+```{r, fig.width=12, fig.height=8}
+# use a more informative color scheme.
+world |>
+  ggplot(aes(x = long, y = lat)) +
+  geom_map(
+    map = world,
+    aes(map_id = region),
+    color = "white", fill = "gray", linewidth = 0.1
+  ) +
+  geom_point(
+    data = d_event_2021, 
+    aes(x = longitude, y = latitude, 
+        size = log(Deaths+1), color = log(Deaths+1)),
+    alpha = 0.1
+    ) +
+  scale_color_viridis_c(direction = -1, option = "A") +
+  coord_map() +
+  theme(legend.position = "bottom")
+```
+
