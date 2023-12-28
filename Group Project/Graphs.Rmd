@@ -1,0 +1,584 @@
+---
+title: "DaSPPA product graphs"
+subtitle: "This document will generate the requisite graphs and data analysis"
+date: "2023-12-01"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, echo = FALSE, warning = FALSE)
+```
+
+Disclaimer: This project used Generative AI (like ChatGPT) to generate some code snippets, which were adapted to release the output we desired.
+
+```{r, echo=TRUE}
+library(tidyverse) 
+library(reshape2)
+library(dplyr)
+library(ggrepel)
+library(datawizard)
+library(knitr) 
+library(kableExtra)  
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+library(stringi)
+library(mapproj)
+library(factoextra)
+library(cluster)
+library(klaR)
+library(maps)
+library(passport)
+library(tidytext)
+library(textdata)
+library(purrr)
+library(countrycode)
+library(igraph)
+library(ggraph)
+library(tidygraph)
+library(ggstance)
+library(patchwork)
+library(stargazer)
+
+set.seed(25536)
+```
+
+### Data Preprocessing
+```{r}
+unvotes <- read.csv("data/dataverse_files/UNVotes.csv")
+idealpointestimates <- read.csv("data/dataverse_files/IdealpointestimatesAll_Jul2023.csv")
+
+#unvotes$date <- as.Date(unvotes$date)
+
+un_vote_data <- unvotes |>
+  dplyr::mutate(date = as.Date(date, format="%Y-%m-%d")) |> 
+  dplyr::select(Country, date, resid, vote, importantvote, me, nu, di, hr, co, ec) |>
+  dplyr::filter(date >= as.Date("2000-01-01", format="%Y-%m-%d"))
+
+
+
+```
+
+
+#### Pre-Training analysis
+Using Elbow method and gap statistic, we aim to find the optimal cluster gap. 
+
+There are elbows at 3 and 5. Gap statistic analysis shows 8 is optimal, but 5 is a local turning point as well. Thus, we can use 5.
+```{r}
+#optional: eval=FALSE
+gc()
+
+df <- un_vote_data |> filter(importantvote == 1)
+dfm <-na.omit(df)
+
+data <- dfm |> dplyr::select(Country, resid, vote)
+data_transposed <- data %>%
+  spread(key = resid, value = vote)
+
+dfm <-na.omit(data_transposed)
+dfm2 <- dfm[, -1]
+
+fviz_nbclust(dfm2, kmeans, method = "wss") +
+      geom_vline(xintercept = 3, linetype = 2)+
+      labs(subtitle = "Elbow method")
+
+gc()
+
+gap_stat <- clusGap(dfm2, FUN = kmeans, nstart = 25, K.max = 10, B = 50)
+fviz_gap_stat(gap_stat)
+gc()
+```
+
+Lets use k=5 as it is a good compromise.
+Why 5 clusters? 5 UNSC superpowers.
+
+#### Fitting the k means model.
+```{r}
+set.seed(4201)
+k <- 5
+
+gc()
+
+df <- un_vote_data |> filter(importantvote == 1)
+dfm <-na.omit(df)
+
+data <- dfm |> dplyr::select(Country, resid, vote)
+data_transposed <- data %>%
+  spread(key = resid, value = vote)
+
+dfm <-na.omit(data_transposed)
+dfm2 <- dfm[, -1]
+
+
+
+
+km.res <- kmeans(dfm2, centers = k, nstart = 1000) 
+fviz_cluster(km.res, data=dfm2)
+
+km.res <- kmeans(dfm2, centers = k, nstart = 1000) 
+fviz_cluster(km.res, data=dfm2)
+
+sf::sf_use_s2(FALSE) 
+
+
+#km.res['Country']=labels
+world2E <- ne_countries(scale="medium", returnclass = "sf")
+#world2E <- st_make_valid(world2E)
+#world2E <- st_simplify(world2E, dTolerance = 100)
+#wrd <- world2E |> dplyr::mutate(Country = as_country_code(geounit, from="en",to = "iso3c"))
+
+wrd <- world2E |> 
+  dplyr::mutate(Country = iso_a3)
+
+```
+
+```{r}
+
+dfm['cluster']= km.res$cluster
+
+
+wrdonly <- anti_join(wrd, dfm, by = "Country")
+summary_1 <- wrdonly |> 
+  dplyr::group_by(Country) |> 
+  dplyr::summarize(count = n()) 
+
+unvotesonly <- anti_join(dfm, wrd, by = "Country")
+summary_2 <- unvotesonly |> 
+  dplyr::group_by(Country) |> 
+  dplyr::summarize(count= n()) 
+
+summary_1
+summary_2
+
+country_group <- dfm |> dplyr::select(Country, cluster)
+
+
+combined <- right_join(country_group, wrd, by = "Country")
+
+combined <- combined |> mutate(cluster = as.character(cluster))
+
+
+
+combined |> ggplot(aes(fill=cluster)) +
+  geom_sf(aes(geometry=geometry)) +
+  coord_sf() +
+
+  guides(x = "none", y = "none") +
+  labs(title = "Map: K Means grouping of UN Voting Alignment Groups",
+    subtitle = "Model: k = 5, aligned on voting Yes/No/Abstain for every resolution",
+    caption = "Using UN Votes Data.",
+    x=NULL, y=NULL, fill="Alignment"
+  ) 
+
+```
+
+
+### Part 2: Graph Network Analysis
+
+
+
+### Part 3: Sentiment Analysis and Regression.
+```{r}
+presscon <- readxl::read_xlsx("data/Sentiment/CMFA_PressCon_v3.xlsx")
+
+press_select <- presscon |> dplyr::select(question_lem, answer_lem, q_loc, a_loc)
+
+```
+
+
+
+
+```{r}
+# Assuming your dataframe is named 'df' and has columns A and B
+# Load a sentiment lexicon (e.g., AFINN) for sentiment analysis
+afinn <- get_sentiments("afinn")
+
+# Function to calculate sentiment for a row
+calculate_row_sentiment <- function(row) {
+  sentiment_question <- row %>%
+    dplyr::select(question_lem) %>%
+    unnest_tokens(word, question_lem) %>%
+    inner_join(afinn) %>%
+    summarize(sentiment_question = sum(value))
+
+  sentiment_answer <- row %>%
+    dplyr::select(answer_lem) %>%
+    unnest_tokens(word, answer_lem) %>%
+    inner_join(afinn) %>%
+    summarize(sentiment_answer = sum(value))
+
+  overall_sentiment <- case_when(
+    sentiment_question$sentiment_question >= 0 ~ sentiment_answer$sentiment_answer,
+    sentiment_question$sentiment_question < 0 ~ -sentiment_answer$sentiment_answer
+  )
+
+  return(cbind(row, sentiment_question, sentiment_answer, overall_sentiment))
+}
+
+# Apply the function row-wise to the dataframe
+sentiment_speech <- press_select %>%
+  group_by(row_number()) %>%
+  do(calculate_row_sentiment(.))
+```
+
+
+```{r}
+# TODO: Process countries mentioned: if countries appear in A and B locations
+sentiment_speech <- sentiment_speech |> mutate(qloctrim = lapply(strsplit(q_loc, ";"), function(x) trimws(x))
+) 
+
+sentiment_speech <- sentiment_speech |> mutate(aloctrim = lapply(strsplit(a_loc, ";"), function(x) trimws(x))
+) 
+
+sentiment_speech <- sentiment_speech |> mutate(qloctrim =
+  if_else(!is.vector(qloctrim), c(qloctrim), qloctrim)
+) 
+
+
+sentiment_speech <- sentiment_speech |> mutate(aloctrim =
+  if_else(!is.vector(aloctrim), c(aloctrim), aloctrim)
+) 
+
+sentiment_speech <- sentiment_speech |> mutate(countries = pmap(list(qloctrim, aloctrim), intersect))
+
+append_sentiment <- function(clist, sentiment) {
+  data.frame(target_country = clist, overall_sentiment = sentiment)
+}
+
+sentiment_china_to_country <- sentiment_speech |> 
+  dplyr::select(countries, overall_sentiment) |>
+  unnest(countries) |>
+  filter(!countries %in% c("China", "-"))
+
+# TODO: Now, group and calculate average sentiment.
+sentiment_china_grouped <- sentiment_china_to_country |>
+  dplyr::select(countries, overall_sentiment) |>
+  group_by(countries) |>
+  summarize(avg_sentiment = mean(overall_sentiment))
+
+sentiments_final <- sentiment_china_grouped |> 
+  mutate(iso3c = as_country_code(countries, from="en",to = "iso3c")) |>
+  group_by(iso3c) |>
+  summarize(avg_sentiment = mean(avg_sentiment))
+
+
+
+# TODO: NOTE: Limitations section for Nisaar: some records are coded as Peoples Republic of Vietnam, Republic of india, etc. Some other places are coded wrong. Very hard to recode everything. Missing out on some sentiment relevant speeches.
+
+```
+
+
+```{r}
+# TODO: Calculate absolute distance between pairs of countries.
+# Using idealpointestimates, use IdealPointAll to calculate the ideal point difference (absolute value) for every pair of countries.
+# Use most recent session in the UN.
+current_ideals_countries <- idealpointestimates |>
+  filter(session ==77)
+
+relevant_ideals <- current_ideals_countries |>
+  dplyr::select(iso3c, IdealPointAll)
+
+china_row <- relevant_ideals |> filter(iso3c == "CHN")
+
+china_paired_sentiments <- relevant_ideals |>
+  filter(iso3c != "CHN") |>
+  mutate(IdealAbsDiff = abs(IdealPointAll - china_row$IdealPointAll))
+
+# Final Step Conduct Join the data, and run regression line with x=UNIdeal y=sentiment
+joined <- inner_join(china_paired_sentiments, sentiments_final, "iso3c") |>
+  dplyr::select(IdealAbsDiff, avg_sentiment) 
+
+# Data has been normalized.
+
+j2 <- joined |>
+  scale()
+
+jd <- as.data.frame(j2)
+
+model <- lm(avg_sentiment ~ IdealAbsDiff, data = jd)
+summary(model)
+
+jd |> ggplot(aes(IdealAbsDiff, avg_sentiment)) +
+  geom_point() +
+  geom_smooth(method='lm') +
+  labs(
+    title = "Regression: UN Vote Alignment on Sentiment for pther countries with China",
+    subtitle = "Model: OLS - Sentiment ~ IdealDifference",
+    caption = "Using UN Votes and China MFA Press Release Data.",
+    x = "UN Voting Ideals Absolute Difference",
+    y = "Average Sentiment of China"
+  )
+
+#sttb <- stargazer(model, type="text")
+#sttb
+
+```
+
+
+Table Of Top and Bottom 5 sentiments for china
+```{r}
+top_sentiment <- sentiments_final |>
+  arrange(desc(avg_sentiment)) 
+
+
+top5 <- head(top_sentiment, 5) |>
+  mutate(name = as_country_code(iso3c, from="iso3c",to = "en"))
+
+bottom5 <- tail(top_sentiment, 5)|>
+  mutate(name = as_country_code(iso3c, from="iso3c",to = "en"))
+
+# Create separate tables for top and bottom 5 rows
+table_top <- kable(top5, format = "html", escape = FALSE) |>
+  kable_styling(full_width = FALSE, position = "center") |>
+  add_header_above(c("Top 5 Sentiment Countries for China" = 3))
+
+table_bottom <- kable(bottom5, format = "html", escape = FALSE) |>
+  kable_styling(full_width = FALSE, position = "center") |>
+  add_header_above(c("Bottom 5 Sentiment Countries for China" = 3))
+
+# Print or display the tables
+print(table_top)
+print(table_bottom)
+
+#kable(top_sentiment, format = "html", escape = FALSE) |>
+  #kable_styling(full_width = FALSE)
+           
+```
+
+
+### Part 2: Graph Network Analysis
+
+```{r}
+
+ideal_wavg <- idealpointestimates |>
+  dplyr::select(iso3c, IdealPointAll, NVotesAll) |>
+  group_by(iso3c) |>
+  summarise(avg_ideals = weighted.mean(IdealPointAll, w=NVotesAll))
+
+cccode_ideal_dyads <- expand.grid(ccode1 = ideal_wavg$iso3c, ccode2 = ideal_wavg$iso3c)
+
+cccode_ideal_dyads <- cccode_ideal_dyads |>
+  filter(ccode1 != ccode2)
+
+ccode_dyad_ideals <- merge(cccode_ideal_dyads, ideal_wavg, by.x = "ccode1", by.y = "iso3c")
+ccode_dyad_ideals <- merge(ccode_dyad_ideals, ideal_wavg, by.x ="ccode2", by.y ="iso3c", suffixes = c(".c1", ".c2"))
+
+ccode_dyad_ideals$abs_diff_ideals <- abs(ccode_dyad_ideals$avg_ideals.c1 - ccode_dyad_ideals$avg_ideals.c2)
+
+ccode_dyads_unsc_big5 <- ccode_dyad_ideals |>
+  filter(ccode2 %in% c("USA", "FRA", "CHN", "RUS", "GBR"))
+
+```
+
+Top 5 allies of UNSC states by alignment
+```{r}
+k <- 5
+
+dyad_chn <- ccode_dyads_unsc_big5 |>
+  filter(ccode2 == "CHN") |>
+  arrange(abs_diff_ideals) |>
+  slice_head(n = k) |>
+  rename( "Country_A" = ccode2 ,  "Country_B" = ccode1 ) |>
+  dplyr::select(Country_A, Country_B, abs_diff_ideals)
+  
+dyad_gbr <- ccode_dyads_unsc_big5 |>
+  filter(ccode2 == "GBR") |>
+  arrange(abs_diff_ideals) |>
+  slice_head(n = k) |>
+  rename( "Country_A" = ccode2 ,  "Country_B" = ccode1 ) |>
+  dplyr::select(Country_A, Country_B, abs_diff_ideals)
+
+dyad_usa <- ccode_dyads_unsc_big5 |>
+  filter(ccode2 == "USA") |>
+  arrange(abs_diff_ideals) |>
+  slice_head(n = k) |>
+  rename( "Country_A" = ccode2 ,  "Country_B" = ccode1 ) |>
+  dplyr::select(Country_A, Country_B, abs_diff_ideals)
+
+dyad_fra <- ccode_dyads_unsc_big5 |>
+  filter(ccode2 == "FRA") |>
+  arrange(abs_diff_ideals) |>
+  slice_head(n = k) |>
+  rename( "Country_A" = ccode2 ,  "Country_B" = ccode1 ) |>
+  dplyr::select(Country_A, Country_B, abs_diff_ideals)
+
+dyad_rus <- ccode_dyads_unsc_big5 |>
+  filter(ccode2 == "RUS") |>
+  arrange(abs_diff_ideals) |>
+  slice_head(n = k) |>
+  rename( "Country_A" = ccode2 ,  "Country_B" = ccode1 ) |>
+  dplyr::select(Country_A, Country_B, abs_diff_ideals)
+
+
+
+
+```
+
+
+```{r}
+chndat <- dyad_chn |> select(Country_B, abs_diff_ideals) |>   
+  mutate(name =countrycode(Country_B, origin = "iso3c", destination = "country.name")) |> 
+  rename("Ideological_Difference" = abs_diff_ideals) |>
+  select(name, Ideological_Difference)
+
+table_chn <- kable(chndat, format = "html", escape = FALSE) |>
+  kable_styling(full_width = FALSE, position = "center") |>
+  add_header_above(c("Top 5 Idealologically Aligned Countries with China" = 2))
+
+table_chn
+
+
+gbrdat <- dyad_gbr |> select(Country_B, abs_diff_ideals) |>   
+  mutate(name =countrycode(Country_B, origin = "iso3c", destination = "country.name")) |> 
+  rename("Ideological_Difference" = abs_diff_ideals) |>
+  select(name, Ideological_Difference)
+
+table_gbr <- kable(gbrdat, format = "html", escape = FALSE) |>
+  kable_styling(full_width = FALSE, position = "center") |>
+  add_header_above(c("Top 5 Idealologically Aligned Countries with the United Kingdom" = 2))
+
+table_gbr
+
+
+fradat <- dyad_fra |> select(Country_B, abs_diff_ideals) |>   
+  mutate(name =countrycode(Country_B, origin = "iso3c", destination = "country.name")) |> 
+  rename("Ideological_Difference" = abs_diff_ideals) |>
+  select(name, Ideological_Difference)
+
+table_fra <- kable(fradat, format = "html", escape = FALSE) |>
+  kable_styling(full_width = FALSE, position = "center") |>
+  add_header_above(c("Top 5 Idealologically Aligned Countries with France" = 2))
+
+table_fra
+
+
+rusdat <- dyad_rus |> select(Country_B, abs_diff_ideals) |>   
+  mutate(name =countrycode(Country_B, origin = "iso3c", destination = "country.name")) |> 
+  rename("Ideological_Difference" = abs_diff_ideals) |>
+  select(name, Ideological_Difference)
+
+table_rus <- kable(rusdat, format = "html", escape = FALSE) |>
+  kable_styling(full_width = FALSE, position = "center") |>
+  add_header_above(c("Top 5 Idealologically Aligned Countries with Russia" = 2))
+
+table_rus
+
+
+usadat <- dyad_usa |> select(Country_B, abs_diff_ideals) |>   
+  mutate(name =countrycode(Country_B, origin = "iso3c", destination = "country.name")) |> 
+  rename("Ideological_Difference" = abs_diff_ideals) |>
+  select(name, Ideological_Difference)
+
+table_usa <- kable(usadat, format = "html", escape = FALSE) |>
+  kable_styling(full_width = FALSE, position = "center") |>
+  add_header_above(c("Top 5 Idealologically Aligned Countries with the United States" = 2))
+
+table_usa
+
+```
+
+
+
+```{r}
+recombinants <- bind_rows(dyad_chn, dyad_fra, dyad_gbr, dyad_rus, dyad_usa)
+
+recombinant_countries <- recombinants |>
+  dplyr::select(Country_B) |>
+  distinct(Country_B)
+
+recombinant_dyads <- expand.grid(Country_A_2 = recombinant_countries$Country_B, Country_B_2 = recombinant_countries$Country_B)
+
+recombinant_dyads <- recombinant_dyads |>
+  filter(Country_A_2 != Country_B_2)
+
+cdi_transformed <- ccode_dyad_ideals |>
+  rename( "Country_A" = ccode2 ,  "Country_B" = ccode1 )
+
+
+recomb_dyads_ideals_1 <- recombinant_dyads |>
+  left_join(cdi_transformed, by = c("Country_A_2" = "Country_A", "Country_B_2" = "Country_B")) 
+
+recomb_dyads_ideals_2 <- recomb_dyads_ideals_1|>
+  left_join(cdi_transformed, by = c("Country_A_2" = "Country_B", "Country_B_2" = "Country_A"), suffix = c("_1", "_2")) 
+
+recomb_dyads_ideals_3 <- recomb_dyads_ideals_2|>
+  transmute(
+    Country_A_2,
+    Country_B_2,
+    abs_diff_ideals_f = coalesce(abs_diff_ideals_1, abs_diff_ideals_2)
+  ) 
+recomb_dyads_ideals <- recomb_dyads_ideals_3|>
+  dplyr::select(Country_A_2, Country_B_2, abs_diff_ideals_f)
+
+```
+
+
+```{r}
+filtered_rec_dyad_ideals <- recomb_dyads_ideals |>
+  anti_join(recombinants, by = c("Country_A_2" = "Country_A", "Country_B_2" = "Country_B")) |>
+  anti_join(recombinants, by = c("Country_A_2" = "Country_B", "Country_B_2" = "Country_A"))
+
+fil_ren_rec_dyad_ideals <- filtered_rec_dyad_ideals |>
+  rename( "Country_A" = Country_A_2 ,  "Country_B" = Country_B_2, "abs_diff_ideals" = abs_diff_ideals_f) 
+
+```
+
+
+
+```{r}
+set.seed(42)
+par(mfrow = c(1, 1), mar = c(0.1, 0.1, 0.1, 0.1), oma = c(0.5, 0.5, 0.5, 0.5))
+
+dyad_ideal_raw <- bind_rows(recombinants, fil_ren_rec_dyad_ideals)
+
+dyads_F <- dyad_ideal_raw |> 
+  mutate(Country_A_name = countrycode(Country_A, origin = "iso3c", destination = "country.name")) |> 
+  mutate(Country_B_name = countrycode(Country_B, origin = "iso3c", destination = "country.name")) 
+
+dyads_E <- dyads_F |>
+  dplyr::select(Country_A_name, Country_B_name, abs_diff_ideals)
+
+dyads_EF <- na.omit(dyads_E)
+
+dyads_final <- dyads_EF |> group_by(Country_A_name, Country_B_name) |>
+  summarise(absdiff_ideals = mean(abs_diff_ideals)) |>
+  dplyr::select(Country_A_name, Country_B_name, absdiff_ideals)
+
+
+graph <- graph_from_data_frame(dyads_final, directed = FALSE)
+
+E(graph)$weight <- dyads_final$absdiff_ideals
+
+color_palette <- colorRampPalette(c("green", "red"))
+
+
+
+plot(
+  graph,
+  edge.width = 1 + 1 * (0.2 - scale(E(graph)$weight)),
+  edge.color = color_palette(length(unique(E(graph)$weight)))[rank(E(graph)$weight)],
+  vertex.size =5,
+  vertex.label = V(graph)$name,
+  layout = layout_with_lgl(graph),
+  vertex.label.dist = 1.2,
+  vertex.label.cex = 1,
+  vertex.label.degree = -2.7*pi/4,
+  vertex.label.color = "black",  
+  vertex.label.font = 2, 
+  vertex.label.size = 0.5
+)
+```
+
+
+
+
+
+
+
+
+
+
+
+
